@@ -10,7 +10,7 @@ jobs:
     env:
       QTM4J_API_KEY: a6e69fb65435d303759c66280950ba51379df0024fdd8c607cde20469fb4e721
       QTM4J_BASE_URL: http://qtm4j-dc-level1-4x-jira.qmetry.com
-      QTM4J_AUTH: ${Basic dmluaXQ6dmluaXQ=}   # store Basic <encoded> OR Bearer <token> here
+      QTM4J_AUTH: "Basic dmluaXQ6dmluaXQ="   # store Basic <encoded> OR Bearer <token> here
       RESULT_FILE: Junit.xml   # ensure this file exists at repo root
 
     steps:
