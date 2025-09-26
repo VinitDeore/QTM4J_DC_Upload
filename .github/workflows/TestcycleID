@@ -1,0 +1,73 @@
+name: Upload Local Test Result to QMetry (Data Center)
+
+on:
+  workflow_dispatch:   # Manual trigger
+    inputs:
+      testCycleId:
+        description: "QMetry Test Cycle ID from webhook or manual input"
+        required: false   # optional
+
+jobs:
+  upload-to-qmetry:
+    runs-on: ubuntu-latest
+
+    env:
+      QTM4J_API_KEY: 5be5117357cad3eb7b63caa152e5636f3c3c26508a94f323522990dea2a0c7b9
+      QTM4J_BASE_URL: http://qtm4j-dc-level1-4x-jira.qmetry.com
+      QTM4J_AUTH: "Basic dmluaXQ6dmluaXQ="   # store Basic <encoded> OR Bearer <token> here
+      RESULT_FILE: Junit.xml   # ensure this file exists at repo root
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      # Step 1: POST → Get importresult response with dynamic test cycle
+      - name: POST → Get importresult response
+        id: presign
+        run: |
+          # Get test cycle ID from workflow input
+          TEST_CYCLE_KEY="${{ github.event.inputs.testCycleId }}"
+          if [ -z "$TEST_CYCLE_KEY" ]; then
+            echo "No test cycle id provided. Using default placeholder."
+            TEST_CYCLE_KEY="DEFAULT_TEST_CYCLE"
+          fi
+          echo "Using Test Cycle ID: $TEST_CYCLE_KEY"
+
+          # Create payload with dynamic testCycleToReuse
+          cat > payload.json <<EOF
+          {
+            "format": "JUNIT",
+            "isZip": false,
+            "testCycleToReuse": "$TEST_CYCLE_KEY"
+          }
+          EOF
+
+          echo "📤 Sending request to QMetry DC..."
+          curl -s -X POST \
+               -H "Content-Type: application/json" \
+               -H "apiKey: $QTM4J_API_KEY" \
+               -H "Authorization: $QTM4J_AUTH" \
+               --data @payload.json \
+               "$QTM4J_BASE_URL/rest/qtm4j/automation/latest/importresult" \
+               -o response.json
+
+          echo "🔍 QMetry response:"
+          cat response.json
+
+          echo "upload_url=$(jq -r '.url' response.json)" >> "$GITHUB_OUTPUT"
+          echo "tracking_id=$(jq -r '.trackingId' response.json)" >> "$GITHUB_OUTPUT"
+
+      # Step 2: Upload result file (form-data, param key = file)
+      - name: POST → Upload test result file
+        run: |
+          echo "📄 Uploading test result file: $RESULT_FILE"
+          curl --fail -X POST \
+               -H "apiKey: $QTM4J_API_KEY" \
+               -H "Authorization: $QTM4J_AUTH" \
+               -F "file=@${RESULT_FILE}" \
+               "${{ steps.presign.outputs.upload_url }}"
+
+          echo "✅ Upload completed. Tracking ID: ${{ steps.presign.outputs.tracking_id }}"
